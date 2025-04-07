@@ -111,7 +111,7 @@ if __name__ == '__main__':
 
     print('[INFO] Faces well imported')
     print('[INFO] Starting Webcam...')
-    video_capture = cv2.VideoCapture(1)
+    video_capture = cv2.VideoCapture(0)
     print('[INFO] Webcam well started')
     print('[INFO] Detecting...')
     while True:
