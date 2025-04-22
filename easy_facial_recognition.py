@@ -34,7 +34,7 @@ def encode_face(image):
     # 💡 OpenCV'den gelen görüntü BGR, biz RGB'ye çevirmeliyiz:
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-    face_locations = face_detector(image, 1)
+    face_locations = face_detector(image, 0)
     face_encodings_list = []
     landmarks_list = []
 
