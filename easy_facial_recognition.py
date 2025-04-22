@@ -8,6 +8,7 @@ import argparse
 from pathlib import Path
 import os
 import ntpath
+import mediapipe as mp
 
 parser = argparse.ArgumentParser(description='Easy Facial Recognition App')
 parser.add_argument('-i', '--input', type=str, required=True, help='directory of input known faces')
@@ -20,6 +21,13 @@ face_encoder = dlib.face_recognition_model_v1("pretrained_model/dlib_face_recogn
 face_detector = dlib.get_frontal_face_detector()
 print('[INFO] Importing pretrained model..')
 
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5)
+mp_drawing = mp.solutions.drawing_utils
+
+heart_img = cv2.imread("heart.png", cv2.IMREAD_UNCHANGED)
+heart_img = cv2.resize(heart_img, (80, 80))
+
 
 def transform(image, face_locations):
     coord_faces = []
@@ -31,16 +39,13 @@ def transform(image, face_locations):
 
 
 def encode_face(image):
-    # 💡 OpenCV'den gelen görüntü BGR, biz RGB'ye çevirmeliyiz:
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-    face_locations = face_detector(image, 0)
+    face_locations = face_detector(image, 1)
     face_encodings_list = []
     landmarks_list = []
 
     for face_location in face_locations:
         shape = pose_predictor_68_point(image, face_location)
-
         try:
             descriptor = face_encoder.compute_face_descriptor(image, shape, num_jitters=1)
             face_encodings_list.append(np.array(descriptor))
@@ -57,26 +62,15 @@ def encode_face(image):
 
 def easy_face_reco(frame, known_face_encodings, known_face_names):
     rgb_small_frame = frame[:, :, ::-1]
-    # ENCODING FACE
     face_encodings_list, face_locations_list, landmarks_list = encode_face(rgb_small_frame)
     face_names = []
     for face_encoding in face_encodings_list:
         if len(face_encoding) == 0:
             return np.empty((0))
-        # CHECK DISTANCE BETWEEN KNOWN FACES AND FACES DETECTED
         vectors = np.linalg.norm(known_face_encodings - face_encoding, axis=1)
         tolerance = 0.6
-        result = []
-        for vector in vectors:
-            if vector <= tolerance:
-                result.append(True)
-            else:
-                result.append(False)
-        if True in result:
-            first_match_index = result.index(True)
-            name = known_face_names[first_match_index]
-        else:
-            name = "Unknown"
+        result = [vector <= tolerance for vector in vectors]
+        name = known_face_names[result.index(True)] if True in result else "Unknown"
         face_names.append(name)
 
     for (top, right, bottom, left), name in zip(face_locations_list, face_names):
@@ -89,19 +83,23 @@ def easy_face_reco(frame, known_face_encodings, known_face_names):
             cv2.circle(frame, (x, y), 1, (255, 0, 255), -1)
 
 
+def is_heart_pose(hand_landmarks):
+    thumb_tip = hand_landmarks.landmark[4]
+    index_tip = hand_landmarks.landmark[8]
+    distance = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
+    return distance < 0.06
+
+
 if __name__ == '__main__':
     args = parser.parse_args()
 
     print('[INFO] Importing faces...')
     face_to_encode_path = Path(args.input)
-    files = [file_ for file_ in face_to_encode_path.rglob('*.jpg')]
+    files = list(face_to_encode_path.rglob('*.jpg')) + list(face_to_encode_path.rglob('*.png'))
+    if len(files) == 0:
+        raise ValueError(f'No faces detected in the directory: {face_to_encode_path}')
 
-    for file_ in face_to_encode_path.rglob('*.png'):
-        files.append(file_)
-    if len(files)==0:
-        raise ValueError('No faces detect in the directory: {}'.format(face_to_encode_path))
     known_face_names = [os.path.splitext(ntpath.basename(file_))[0] for file_ in files]
-
     known_face_encodings = []
     for file_ in files:
         image = PIL.Image.open(file_)
@@ -111,15 +109,34 @@ if __name__ == '__main__':
 
     print('[INFO] Faces well imported')
     print('[INFO] Starting Webcam...')
-    video_capture = cv2.VideoCapture(0)
+    video_capture = cv2.VideoCapture(1)
     print('[INFO] Webcam well started')
     print('[INFO] Detecting...')
+
     while True:
         ret, frame = video_capture.read()
         easy_face_reco(frame, known_face_encodings, known_face_names)
+
+        # MediaPipe ellerle kalp kontrolü
+        image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        result = hands.process(image_rgb)
+
+        if result.multi_hand_landmarks and len(result.multi_hand_landmarks) == 2:
+            poses = [is_heart_pose(hand) for hand in result.multi_hand_landmarks]
+            if all(poses):
+                h, w, _ = frame.shape
+                x, y = w // 2 - 40, h // 2 - 40
+                for c in range(0, 3):
+                    frame[y:y+80, x:x+80, c] = (
+                        heart_img[:, :, c] * (heart_img[:, :, 3] / 255.0) +
+                        frame[y:y+80, x:x+80, c] * (1.0 - heart_img[:, :, 3] / 255.0)
+                    )
+
         cv2.imshow('Easy Facial Recognition App', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
+
     print('[INFO] Stopping System')
     video_capture.release()
     cv2.destroyAllWindows()
+    hands.close()
