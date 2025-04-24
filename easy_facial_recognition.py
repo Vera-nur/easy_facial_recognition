@@ -28,6 +28,8 @@ mp_drawing = mp.solutions.drawing_utils
 heart_img = cv2.imread("heart.png", cv2.IMREAD_UNCHANGED)
 heart_img = cv2.resize(heart_img, (80, 80))
 
+ok_img = cv2.imread("ok.png", cv2.IMREAD_UNCHANGED)
+ok_img = cv2.resize(ok_img, (80, 80))
 
 def transform(image, face_locations):
     coord_faces = []
@@ -89,6 +91,18 @@ def is_heart_pose(hand_landmarks):
     distance = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
     return distance < 0.06
 
+def is_ok_pose(hand_landmarks):
+    # İşaret parmağı yukarıda, başparmak kıvrılmışsa 'ok' işareti
+    index_tip = hand_landmarks.landmark[8]
+    middle_tip = hand_landmarks.landmark[12]
+    thumb_tip = hand_landmarks.landmark[4]
+    wrist = hand_landmarks.landmark[0]
+
+    # Basit bir tanım: işaret parmağı diğerlerinden yukarıda ve başparmak bileğe yakın
+    is_index_up = index_tip.y < middle_tip.y and index_tip.y < thumb_tip.y
+    is_thumb_down = abs(thumb_tip.y - wrist.y) < 0.05
+
+    return is_index_up and is_thumb_down
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -109,7 +123,7 @@ if __name__ == '__main__':
 
     print('[INFO] Faces well imported')
     print('[INFO] Starting Webcam...')
-    video_capture = cv2.VideoCapture(1)
+    video_capture = cv2.VideoCapture(0)
     print('[INFO] Webcam well started')
     print('[INFO] Detecting...')
 
@@ -121,17 +135,31 @@ if __name__ == '__main__':
         image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = hands.process(image_rgb)
 
-        if result.multi_hand_landmarks and len(result.multi_hand_landmarks) == 2:
-            poses = [is_heart_pose(hand) for hand in result.multi_hand_landmarks]
-            if all(poses):
-                h, w, _ = frame.shape
-                x, y = w // 2 - 40, h // 2 - 40
-                for c in range(0, 3):
-                    frame[y:y+80, x:x+80, c] = (
-                        heart_img[:, :, c] * (heart_img[:, :, 3] / 255.0) +
-                        frame[y:y+80, x:x+80, c] * (1.0 - heart_img[:, :, 3] / 255.0)
-                    )
+        if result.multi_hand_landmarks:
+            hand_poses = [hand for hand in result.multi_hand_landmarks]
 
+            if len(hand_poses) == 2:
+                poses = [is_heart_pose(hand) for hand in hand_poses]
+                if all(poses):
+                    h, w, _ = frame.shape
+                    x, y = w // 2 - 40, h // 2 - 40
+                    for c in range(0, 3):
+                        frame[y:y+80, x:x+80, c] = (
+                            heart_img[:, :, c] * (heart_img[:, :, 3] / 255.0) +
+                            frame[y:y+80, x:x+80, c] * (1.0 - heart_img[:, :, 3] / 255.0)
+                        )
+                    cv2.putText(frame, "❤️ Kalp!", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+
+            elif len(hand_poses) == 1:
+                if is_ok_pose(hand_poses[0]):
+                    h, w, _ = frame.shape
+                    x, y = w // 2 - 40, h // 2 - 40
+                    for c in range(0, 3):
+                        frame[y:y+80, x:x+80, c] = (
+                            ok_img[:, :, c] * (ok_img[:, :, 3] / 255.0) +
+                            frame[y:y+80, x:x+80, c] * (1.0 - ok_img[:, :, 3] / 255.0)
+                        )
+                    cv2.putText(frame, "👌 Tamam!", (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 0, 0), 3)
         cv2.imshow('Easy Facial Recognition App', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
