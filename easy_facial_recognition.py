@@ -128,16 +128,22 @@ if __name__ == '__main__':
     print('[INFO] Faces well imported')
     print('[INFO] Starting Webcam...')
     video_capture = cv2.VideoCapture(0)
+    video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     print('[INFO] Webcam well started')
     print('[INFO] Detecting...')
 
+
+    frame_count = 0
+    
     while True:
         ret, frame = video_capture.read()
         if not ret or frame is None:
             print("[ERROR] Kameradan görüntü alınamadı.")
             break
-
-        easy_face_reco(frame, known_face_encodings, known_face_names)
+        if frame_count % 5 == 0:
+           easy_face_reco(frame, known_face_encodings, known_face_names)
+        
 
         # El pozisyonlarını tespit et ve çiz
         image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
