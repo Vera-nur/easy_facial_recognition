@@ -88,21 +88,25 @@ def easy_face_reco(frame, known_face_encodings, known_face_names):
 def is_heart_pose(hand_landmarks):
     thumb_tip = hand_landmarks.landmark[4]
     index_tip = hand_landmarks.landmark[8]
+
     distance = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
-    return distance < 0.06
+
+    print(f"[HEART] Index Tip Y: {index_tip.y:.2f}, Thumb Tip Y: {thumb_tip.y:.2f}, Distance: {distance:.3f}")
+
+    return distance < 0.32  # bu aralığa göre ideal eşik!
+
 
 def is_ok_pose(hand_landmarks):
-    # İşaret parmağı yukarıda, başparmak kıvrılmışsa 'ok' işareti
     index_tip = hand_landmarks.landmark[8]
-    middle_tip = hand_landmarks.landmark[12]
     thumb_tip = hand_landmarks.landmark[4]
-    wrist = hand_landmarks.landmark[0]
 
-    # Basit bir tanım: işaret parmağı diğerlerinden yukarıda ve başparmak bileğe yakın
-    is_index_up = index_tip.y < middle_tip.y and index_tip.y < thumb_tip.y
-    is_thumb_down = abs(thumb_tip.y - wrist.y) < 0.05
+    distance = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
 
-    return is_index_up and is_thumb_down
+    # Yazdırmaya devam edelim (debug için)
+    print(f"Index Tip Y: {index_tip.y:.2f}, Thumb Tip Y: {thumb_tip.y:.2f}, Distance: {distance:.3f}")
+
+    # Eşiği 0.38 yaptık, çünkü senin gesture'ların genelde 0.33–0.36 aralığında
+    return distance < 0.38 and index_tip.y > thumb_tip.y
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -129,41 +133,52 @@ if __name__ == '__main__':
 
     while True:
         ret, frame = video_capture.read()
+        if not ret or frame is None:
+            print("[ERROR] Kameradan görüntü alınamadı.")
+            break
+
         easy_face_reco(frame, known_face_encodings, known_face_names)
 
-        # MediaPipe ellerle kalp kontrolü
+        # El pozisyonlarını tespit et ve çiz
         image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = hands.process(image_rgb)
 
         if result.multi_hand_landmarks:
             hand_poses = [hand for hand in result.multi_hand_landmarks]
 
+            # Her eli çiz (iskelet çizimi)
+            for hand_landmarks in hand_poses:
+                mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
+            # Kalp gesture için: iki el varsa ve ikisi de kalp pozunda ise
             if len(hand_poses) == 2:
                 poses = [is_heart_pose(hand) for hand in hand_poses]
                 if all(poses):
                     h, w, _ = frame.shape
                     x, y = w // 2 - 40, h // 2 - 40
-                    for c in range(0, 3):
+                    for c in range(3):  # RGB
                         frame[y:y+80, x:x+80, c] = (
                             heart_img[:, :, c] * (heart_img[:, :, 3] / 255.0) +
                             frame[y:y+80, x:x+80, c] * (1.0 - heart_img[:, :, 3] / 255.0)
                         )
-                    cv2.putText(frame, "❤️ Kalp!", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+                    cv2.putText(frame, "Kalp!", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
 
+            # OK gesture için: tek el varsa ve poz doğruysa
             elif len(hand_poses) == 1:
                 if is_ok_pose(hand_poses[0]):
                     h, w, _ = frame.shape
                     x, y = w // 2 - 40, h // 2 - 40
-                    for c in range(0, 3):
+                    for c in range(3):  # RGB
                         frame[y:y+80, x:x+80, c] = (
                             ok_img[:, :, c] * (ok_img[:, :, 3] / 255.0) +
                             frame[y:y+80, x:x+80, c] * (1.0 - ok_img[:, :, 3] / 255.0)
                         )
-                    cv2.putText(frame, "👌 Tamam!", (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 0, 0), 3)
+                    cv2.putText(frame, "Tamam!", (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 0, 0), 3)
+
+        # Kamera görüntüsünü göster
         cv2.imshow('Easy Facial Recognition App', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-
     print('[INFO] Stopping System')
     video_capture.release()
     cv2.destroyAllWindows()
