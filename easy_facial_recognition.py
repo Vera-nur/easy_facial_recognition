@@ -9,6 +9,10 @@ from pathlib import Path
 import os
 import ntpath
 import mediapipe as mp
+import speech_recognition as sr
+
+for index, name in enumerate(sr.Microphone.list_microphone_names()):
+    print(f"{index}: {name}")
 
 parser = argparse.ArgumentParser(description='Easy Facial Recognition App')
 parser.add_argument('-i', '--input', type=str, required=True, help='directory of input known faces')
@@ -23,10 +27,10 @@ print('[INFO] Importing pretrained model..')
 
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5)
-mp_drawing = mp.solutions.drawing_utils
+mp_drawing = mp.solutions.drawing_utils## bak buraya
 
 heart_img = cv2.imread("heart.png", cv2.IMREAD_UNCHANGED)
-heart_img = cv2.resize(heart_img, (80, 80))
+heart_img = cv2.resize(heart_img, (100, 100))
 
 ok_img = cv2.imread("ok.png", cv2.IMREAD_UNCHANGED)
 ok_img = cv2.resize(ok_img, (80, 80))
@@ -103,10 +107,27 @@ def is_ok_pose(hand_landmarks):
     distance = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
 
     # Yazdırmaya devam edelim (debug için)
-    print(f"Index Tip Y: {index_tip.y:.2f}, Thumb Tip Y: {thumb_tip.y:.2f}, Distance: {distance:.3f}")
+    #print(f"Index Tip Y: {index_tip.y:.2f}, Thumb Tip Y: {thumb_tip.y:.2f}, Distance: {distance:.3f}")
 
     # Eşiği 0.38 yaptık, çünkü senin gesture'ların genelde 0.33–0.36 aralığında
     return distance < 0.38 and index_tip.y > thumb_tip.y
+
+def listen_for_keyword(expected_keyword):
+    recognizer = sr.Recognizer()
+    with sr.Microphone(device_index=1) as source:
+        recognizer.adjust_for_ambient_noise(source, duration=1)
+        print("[INFO] Lütfen konuşun...")
+        audio = recognizer.listen(source, phrase_time_limit=5)
+        try:
+            text = recognizer.recognize_google(audio, language="tr-TR")
+            print(f"[INFO] Algılanan ses: {text}")
+            if expected_keyword.lower() in text.lower():
+                return True
+        except sr.UnknownValueError:
+            print("[INFO] Ses anlaşılamadı.")
+        except sr.RequestError as e:
+            print(f"[ERROR] Google Speech API hatası: {e}")
+    return False
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -127,7 +148,7 @@ if __name__ == '__main__':
 
     print('[INFO] Faces well imported')
     print('[INFO] Starting Webcam...')
-    video_capture = cv2.VideoCapture(0)
+    video_capture = cv2.VideoCapture(1)
     video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     print('[INFO] Webcam well started')
@@ -135,6 +156,7 @@ if __name__ == '__main__':
 
 
     frame_count = 0
+    expected_keyword = "python"
     
     while True:
         ret, frame = video_capture.read()
@@ -152,9 +174,10 @@ if __name__ == '__main__':
         if result.multi_hand_landmarks:
             hand_poses = [hand for hand in result.multi_hand_landmarks]
 
-            # Her eli çiz (iskelet çizimi)
-            for hand_landmarks in hand_poses:
-                mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            # Her eli çiz (iskelet çizimi) 
+            #for hand_landmarks in hand_poses:
+                #mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            #bence bu çizim kısmı güzel durmuyor ondan o çizimleri sildim 
 
             # Kalp gesture için: iki el varsa ve ikisi de kalp pozunda ise
             if len(hand_poses) == 2:
@@ -163,9 +186,9 @@ if __name__ == '__main__':
                     h, w, _ = frame.shape
                     x, y = w // 2 - 40, h // 2 - 40
                     for c in range(3):  # RGB
-                        frame[y:y+80, x:x+80, c] = (
+                        frame[y:y+100, x:x+100, c] = (
                             heart_img[:, :, c] * (heart_img[:, :, 3] / 255.0) +
-                            frame[y:y+80, x:x+80, c] * (1.0 - heart_img[:, :, 3] / 255.0)
+                            frame[y:y+100, x:x+100, c] * (1.0 - heart_img[:, :, 3] / 255.0)
                         )
                     cv2.putText(frame, "Kalp!", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
 
@@ -180,6 +203,12 @@ if __name__ == '__main__':
                             frame[y:y+80, x:x+80, c] * (1.0 - ok_img[:, :, 3] / 255.0)
                         )
                     cv2.putText(frame, "Tamam!", (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 0, 0), 3)
+            # Sesle anahtar kelime doğrulama
+        if cv2.waitKey(1) & 0xFF == ord('s'):
+            if listen_for_keyword(expected_keyword):
+                cv2.putText(frame, "\u015eifre do\u011fru giris yapt\u0131n\u0131z", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3)
+            else:
+                cv2.putText(frame, "\u015eifre yanl\u0131\u015f, tekrar deneyin", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
 
         # Kamera görüntüsünü göster
         cv2.imshow('Easy Facial Recognition App', frame)
