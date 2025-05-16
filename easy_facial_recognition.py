@@ -11,9 +11,20 @@ import ntpath
 import mediapipe as mp
 import speech_recognition as sr
 
+import speech_recognition as sr
+
+with sr.Microphone() as source:
+    print("Mikrofon dinleniyor...")
+    recognizer = sr.Recognizer()
+    audio = recognizer.listen(source)
 for index, name in enumerate(sr.Microphone.list_microphone_names()):
     print(f"{index}: {name}")
 
+
+
+print("🧠 Mevcut mikrofonlar:")
+for index, name in enumerate(sr.Microphone.list_microphone_names()):
+    print(f"{index}: {name}")
 parser = argparse.ArgumentParser(description='Easy Facial Recognition App')
 parser.add_argument('-i', '--input', type=str, required=True, help='directory of input known faces')
 
@@ -114,19 +125,32 @@ def is_ok_pose(hand_landmarks):
 
 def listen_for_keyword(expected_keyword):
     recognizer = sr.Recognizer()
-    with sr.Microphone(device_index=1) as source:
-        recognizer.adjust_for_ambient_noise(source, duration=1)
-        print("[INFO] Lütfen konuşun...")
-        audio = recognizer.listen(source, phrase_time_limit=5)
-        try:
+
+    # Mikrofon indexini güvenli şekilde otomatik al
+    mic_list = sr.Microphone.list_microphone_names()
+    if not mic_list:
+        print("[ERROR] Hiçbir mikrofon bulunamadı.")
+        return False
+
+    print("🧠 Mikrofonlar:", mic_list)
+    device_index = 0  # Gerekirse elle doğru index'i buraya yaz
+
+    try:
+        with sr.Microphone(device_index=device_index) as source:
+            recognizer.adjust_for_ambient_noise(source, duration=1)
+            print("[INFO] Lütfen konuşun...")
+            audio = recognizer.listen(source, phrase_time_limit=5)
             text = recognizer.recognize_google(audio, language="tr-TR")
             print(f"[INFO] Algılanan ses: {text}")
-            if expected_keyword.lower() in text.lower():
-                return True
-        except sr.UnknownValueError:
-            print("[INFO] Ses anlaşılamadı.")
-        except sr.RequestError as e:
-            print(f"[ERROR] Google Speech API hatası: {e}")
+            return expected_keyword.lower() in text.lower()
+    except AssertionError as ae:
+        print("[ERROR] Mikrofon başlatılamadı. Muhtemelen device_index hatalı.")
+    except sr.UnknownValueError:
+        print("[INFO] Ses anlaşılamadı.")
+    except sr.RequestError as e:
+        print(f"[ERROR] Google API hatası: {e}")
+    except Exception as e:
+        print(f"[ERROR] Genel hata: {e}")
     return False
 
 if __name__ == '__main__':
@@ -156,7 +180,7 @@ if __name__ == '__main__':
 
 
     frame_count = 0
-    expected_keyword = "python"
+    expected_keyword = "merhaba"
     
     while True:
         ret, frame = video_capture.read()
@@ -166,8 +190,7 @@ if __name__ == '__main__':
         if frame_count % 5 == 0:
            easy_face_reco(frame, known_face_encodings, known_face_names)
         
-
-        # El pozisyonlarını tespit et ve çiz
+        
         image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = hands.process(image_rgb)
 
