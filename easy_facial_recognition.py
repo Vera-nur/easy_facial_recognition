@@ -10,8 +10,18 @@ import os
 import ntpath
 import mediapipe as mp
 import speech_recognition as sr
-
+import threading
 import speech_recognition as sr
+
+keyword_checking = False
+keyword_success = False
+
+def threaded_keyword_check(expected_keyword):
+    global keyword_checking, keyword_success
+    keyword_checking = True
+    keyword_success = listen_for_keyword(expected_keyword)
+    keyword_checking = False
+    
 
 with sr.Microphone() as source:
     print("Mikrofon dinleniyor...")
@@ -183,6 +193,8 @@ if __name__ == '__main__':
     expected_keyword = "merhaba"
     
     while True:
+        
+        
         ret, frame = video_capture.read()
         if not ret or frame is None:
             print("[ERROR] Kameradan görüntü alınamadı.")
@@ -228,11 +240,12 @@ if __name__ == '__main__':
                     cv2.putText(frame, "Tamam!", (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 0, 0), 3)
             # Sesle anahtar kelime doğrulama
         if cv2.waitKey(1) & 0xFF == ord('s'):
-            if listen_for_keyword(expected_keyword):
-                cv2.putText(frame, "\u015eifre do\u011fru giris yapt\u0131n\u0131z", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3)
-            else:
-                cv2.putText(frame, "\u015eifre yanl\u0131\u015f, tekrar deneyin", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
-
+            if not keyword_checking:
+             threading.Thread(target=threaded_keyword_check, args=(expected_keyword,), daemon=True).start()
+        if keyword_success:
+           cv2.putText(frame, "Correct password.Successfully logged in", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3)
+        elif keyword_checking:
+          cv2.putText(frame, "Listening for voice...", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 3)
         # Kamera görüntüsünü göster
         cv2.imshow('Easy Facial Recognition App', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
